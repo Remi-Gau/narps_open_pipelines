@@ -79,11 +79,11 @@ def get_preprocessing(exp_dir, result_dir, working_dir, output_dir, subject_list
 
     func_file = opj('sub-{subject_id}', 'func', 
                     'sub-{subject_id}_task-MGT_run-{run_id}_bold.nii.gz')
-    
+
     magnitude_file = opj('sub-{subject_id}', 'fmap', 'sub-{subject_id}_magnitude1.nii.gz')
 
     phasediff_file = opj('sub-{subject_id}', 'fmap', 'sub-{subject_id}_phasediff.nii.gz')
-    
+
     template = {'anat' : anat_file, 'func' : func_file, 'magnitude' : magnitude_file, 'phasediff' : phasediff_file}
 
     # SelectFiles node - to select necessary files
@@ -104,13 +104,13 @@ def get_preprocessing(exp_dir, result_dir, working_dir, output_dir, subject_list
 
     motion_correction = Node(RealignUnwarp(interp = 4, register_to_mean = True),
                              name = 'motion_correction')
-    
+
     extract_epi = Node(ExtractROI(t_min = 1, t_size=1, output_type = 'NIFTI'), name = 'extract_ROI')
-    
+
     extract_first = Node(ExtractROI(t_min = 1, t_size=1, output_type = 'NIFTI'), name = 'extract_first')
 
     coregistration = Node(Coregister(jobtype = 'estimate', write_mask = False), name = 'coregistration')
-    
+
     tissue1 = [('/opt/spm12-r7771/spm12_mcr/spm12/tpm/TPM.nii', 1), 1, (True,False), (True, False)]
     tissue2 = [('/opt/spm12-r7771/spm12_mcr/spm12/tpm/TPM.nii', 2), 1, (True,False), (True, False)]
     tissue3 = [('/opt/spm12-r7771/spm12_mcr/spm12/tpm/TPM.nii', 3), 2, (True,False), (True, False)]
@@ -118,9 +118,9 @@ def get_preprocessing(exp_dir, result_dir, working_dir, output_dir, subject_list
     tissue5 = [('/opt/spm12-r7771/spm12_mcr/spm12/tpm/TPM.nii', 5), 4, (True,False), (True, False)]
     tissue6 = [('/opt/spm12-r7771/spm12_mcr/spm12/tpm/TPM.nii', 6), 2, (True,False), (True, False)]
     tissue_list = [tissue1, tissue2, tissue3, tissue4, tissue5, tissue6]
-    
+
     segmentation = Node(NewSegment(write_deformation_fields = [True, True], tissues = tissue_list), name = 'segmentation')
-    
+
     normalize = Node(Normalize12(write_voxel_sizes=[1.5, 1.5, 1.5], jobtype = 'write'), name = 'normalize')
 
     rm_files = Node(Function(input_names = ['files', 'run_id', 'subject_id', 'result_dir', 'working_dir'],
@@ -168,7 +168,7 @@ def get_preprocessing(exp_dir, result_dir, working_dir, output_dir, subject_list
                                                                   'preprocess.@realign_par')]),
                           (segmentation, datasink_preproc, [('normalized_class_images', 'preprocess.@gm')])
                           ])
-    
+
     return preprocessing
 
 
@@ -189,7 +189,7 @@ def get_subject_infos(event_files, runs):
     - subject_info : list of Bunch for 1st level analysis.
     '''
     from nipype.interfaces.base import Bunch
-    
+
     cond_names = ['trial']
     onset = {}
     duration = {}
@@ -197,30 +197,30 @@ def get_subject_infos(event_files, runs):
     weights_loss = {}
     onset_button = {}
     duration_button = {}
-    
+
     for r in range(len(runs)):  # Loop over number of runs.
-        onset.update({s + '_run' + str(r+1) : [] for s in cond_names}) # creates dictionary items with empty lists
-        duration.update({s + '_run' + str(r+1) : [] for s in cond_names}) 
-        weights_gain.update({'gain_run' + str(r+1) : []})
-        weights_loss.update({'loss_run' + str(r+1) : []})
-        onset_button.update({'button_run' + str(r+1) : []})
-        duration_button.update({'button_run' + str(r+1) : []})
-    
+        onset |= {f'{s}_run{str(r+1)}': [] for s in cond_names}
+        duration |= {f'{s}_run{str(r+1)}': [] for s in cond_names}
+        weights_gain[f'gain_run{str(r+1)}'] = []
+        weights_loss[f'loss_run{str(r+1)}'] = []
+        onset_button[f'button_run{str(r+1)}'] = []
+        duration_button[f'button_run{str(r+1)}'] = []
+
     for r, run in enumerate(runs):
         
         f_events = event_files[r]
-        
+
         with open(f_events, 'rt') as f:
             next(f)  # skip the header
-            
+
             for line in f:
                 info = line.strip().split()
-                
+
                 for cond in cond_names:
-                    val = cond + '_run' + str(r+1) # trial_run1
-                    val_gain = 'gain_run' + str(r+1) # gain_run1
-                    val_loss = 'loss_run' + str(r+1) # loss_run1
-                    val_button = 'button_run' + str(r+1)
+                    val = f'{cond}_run{str(r+1)}'
+                    val_gain = f'gain_run{str(r+1)}'
+                    val_loss = f'loss_run{str(r+1)}'
+                    val_button = f'button_run{str(r+1)}'
                     onset[val].append(float(info[0])) # onsets for trial_run1 
                     duration[val].append(float(4))
                     weights_gain[val_gain].append(float(info[2])) # weights gain for trial_run1
@@ -233,10 +233,10 @@ def get_subject_infos(event_files, runs):
     subject_info = []
     for r in range(len(runs)):
 
-        cond = 'trial_run' + str(r+1)
-        button_cond = 'button_run' + str(r+1)
-        gain = 'gain_run' + str(r+1)
-        loss = 'loss_run' + str(r+1)
+        cond = f'trial_run{str(r+1)}'
+        button_cond = f'button_run{str(r+1)}'
+        gain = f'gain_run{str(r+1)}'
+        loss = f'loss_run{str(r+1)}'
 
         subject_info.insert(r,
                            Bunch(conditions=[cond],
@@ -284,9 +284,7 @@ def get_contrasts(subject_id):
         'loss', 'T',
         loss, pos_1)
 
-    contrasts = [gain, loss]
-
-    return contrasts
+    return [gain, loss]
 
 
 def get_l1_analysis(subject_list, TR, run_list, exp_dir, result_dir, working_dir, output_dir):
@@ -413,10 +411,10 @@ def get_subset_contrasts(file_list, subject_list, participants_file, method):
 
     with open(participants_file, 'rt') as f:
             next(f)  # skip the header
-            
+
             for line in f:
                 info = line.strip().split()
-                
+
                 if info[0][-3:] in subject_list and info[1] == "equalIndifference":
                     equalIndifference_id.append(info[0][-3:])
                     equalIndifference_covar_val[0].append(float(info[3]))
@@ -425,25 +423,25 @@ def get_subset_contrasts(file_list, subject_list, participants_file, method):
                     equalRange_id.append(info[0][-3:])
                     equalRange_covar_val[0].append(float(info[3]))
                     equalRange_covar_val[1].append(0 if info[2]=='M' else 1)
-    
+
     for file in file_list:
         sub_id = file.split('/')
         if sub_id[-2][-3:] in equalIndifference_id:
             equalIndifference_files.append(file)
         elif sub_id[-2][-3:] in equalRange_id:
             equalRange_files.append(file)
-            
+
     equalRange_covar = [dict(vector=equalRange_covar_val[0], name='age', centering=[1]),
                         dict(vector=equalRange_covar_val[1], name='sex', centering=[1])]
-    
+
     equalIndifference_covar = [dict(vector=equalIndifference_covar_val[0], name='age', centering=[1]),
                                dict(vector=equalIndifference_covar_val[1], name='sex', centering=[1])]
-    
+
     nb_eqRange = len(equalRange_id)
     nb_eqIndifference = len(equalIndifference_id)
-    
+
     global_covar = []
-    
+
     if method == 'groupComp':
         global_covar = [dict(vector=equalRange_covar_val[0], name='eqRange_age'),
                         dict(vector=equalIndifference_covar_val[0], name='eqIndifference_age'),
@@ -452,13 +450,13 @@ def get_subset_contrasts(file_list, subject_list, participants_file, method):
 
         for i in range(4):
             if i in [0, 2]:
-                for k in range(nb_eqIndifference):
+                for _ in range(nb_eqIndifference):
                     global_covar[i]['vector'].append(0)
             elif i in [1, 3]:
                 for k in range(nb_eqRange):
                     global_covar[i]['vector'].insert(0 ,0)
-    
-            
+
+
     return equalIndifference_id, equalRange_id, equalIndifference_files, equalRange_files, equalRange_covar, equalIndifference_covar, global_covar 
 
 
@@ -490,18 +488,18 @@ def get_l2_analysis(subject_list, n_sub, contrast_list, method, exp_dir, result_
     contrast_file = opj(result_dir, output_dir, 'l1_analysis', '_subject_id_*', "con_00{contrast_id}.nii")
 
     participants_file = opj(exp_dir, 'participants.tsv')
-    
+
     mask_file = opj(data_dir, 'NARPS-0I4U', 'hypo1_unthresh.nii.gz')
 
     templates = {'contrast' : contrast_file, 'participants' : participants_file, 'mask':mask_file}
-    
+
     selectfiles_groupanalysis = Node(SelectFiles(templates, base_directory=result_dir, force_list= True),
                        name="selectfiles_groupanalysis")
-    
+
     # Datasink node : to save important files 
     datasink_groupanalysis = Node(DataSink(base_directory = result_dir, container = output_dir), 
                                   name = 'datasink_groupanalysis')
-    
+
     gunzip_mask = Node(Gunzip(), name='gunzip_mask')
     # Node to select subset of contrasts
     sub_contrasts = Node(Function(input_names = ['file_list', 'subject_list', 'participants_file', 'method'],
@@ -510,7 +508,7 @@ def get_l2_analysis(subject_list, n_sub, contrast_list, method, exp_dir, result_
                                                 'equalRange_covar', 'equalIndifference_covar', 'global_covar'],
                                  function = get_subset_contrasts),
                         name = 'sub_contrasts')
-    
+
     sub_contrasts.inputs.method = method
 
     ## Estimate model 
@@ -525,7 +523,7 @@ def get_l2_analysis(subject_list, n_sub, contrast_list, method, exp_dir, result_
                                   height_threshold_type='p-value',
                                   force_activation = False), name = "threshold", 
                         iterfield = ["stat_image", "contrast_index"])
-    
+
 
     l2_analysis = Workflow(base_dir = opj(result_dir, working_dir), name = f"l2_analysis_{method}_nsub_{n_sub}")
 
@@ -543,9 +541,9 @@ def get_l2_analysis(subject_list, n_sub, contrast_list, method, exp_dir, result_
         (estimate_contrast, datasink_groupanalysis, [('spm_mat_file', f"l2_analysis_{method}_nsub_{n_sub}.@spm_mat"),
             ('spmT_images', f"l2_analysis_{method}_nsub_{n_sub}.@T"),
             ('con_images', f"l2_analysis_{method}_nsub_{n_sub}.@con")])])
-    
-    
-    if method=='equalRange' or method=='equalIndifference':
+
+
+    if method in ['equalRange', 'equalIndifference']:
         contrasts = [('Group', 'T', ['mean'], [1]), ('Group', 'T', ['mean'], [-1])] 
         ## Specify design matrix 
         one_sample_t_test_design = Node(OneSampleTTestDesign(use_implicit_threshold=True), name = "one_sample_t_test_design")
@@ -554,7 +552,7 @@ def get_l2_analysis(subject_list, n_sub, contrast_list, method, exp_dir, result_
                                                                        (f"{method}_covar", "covariates")]),
                              (gunzip_mask, one_sample_t_test_design, [('out_file', 'explicit_mask_file')]),
             (one_sample_t_test_design, estimate_model, [('spm_mat_file', 'spm_mat_file')])])
-        
+
         threshold.inputs.contrast_index = [1, 2]
         threshold.synchronize = True
 
@@ -568,7 +566,7 @@ def get_l2_analysis(subject_list, n_sub, contrast_list, method, exp_dir, result_
             ('equalIndifference_files', 'group2_files'), ('global_covar', 'covariates')]),
             (gunzip_mask, two_sample_t_test_design, [('out_file', 'explicit_mask_file')]),
             (two_sample_t_test_design, estimate_model, [("spm_mat_file", "spm_mat_file")])])
-        
+
         threshold.inputs.contrast_index = [1]
         threshold.synchronize = True
 
@@ -609,10 +607,10 @@ def reorganize_results(result_dir, output_dir, n_sub, team_ID):
     repro_thresh = [opj(filename, "_threshold1", 
          "spmT_0002_thr.nii") if i in [6, 7] else opj(filename, 
           "_threshold0", "spmT_0001_thr.nii")  for i, filename in enumerate(h)]
-    
+
     if not os.path.isdir(opj(result_dir, "NARPS-reproduction")):
         os.mkdir(opj(result_dir, "NARPS-reproduction"))
-    
+
     for i, filename in enumerate(repro_unthresh):
         f_in = filename
         f_out = opj(result_dir, "NARPS-reproduction", f"team_{team_ID}_nsub_{n_sub}_hypo{i+1}_unthresholded.nii")
@@ -622,5 +620,5 @@ def reorganize_results(result_dir, output_dir, n_sub, team_ID):
         f_in = filename
         f_out = opj(result_dir, "NARPS-reproduction", f"team_{team_ID}_nsub_{n_sub}_hypo{i+1}_thresholded.nii")
         shutil.copyfile(f_in, f_out)
-    
+
     print(f"Results files of team {team_ID} reorganized.")

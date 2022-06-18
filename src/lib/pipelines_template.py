@@ -97,7 +97,7 @@ def get_subject_infos_spm(event_files, runs):
     - subject_info : list of Bunch for 1st level analysis.
     '''
     from nipype.interfaces.base import Bunch
-    
+
     cond_names = ['trial', 'accepting', 'rejecting']
     onset = {}
     duration = {}
@@ -105,27 +105,27 @@ def get_subject_infos_spm(event_files, runs):
     weights_loss = {}
     onset_button = {}
     duration_button = {}
-    
+
     for r in range(len(runs)):  # Loop over number of runs.
-        onset.update({s + '_run' + str(r+1) : [] for s in cond_names}) # creates dictionary items with empty lists
-        duration.update({s + '_run' + str(r+1) : [] for s in cond_names}) 
-        weights_gain.update({'gain_run' + str(r+1) : []})
-        weights_loss.update({'loss_run' + str(r+1) : []})
-    
+        onset |= {f'{s}_run{str(r+1)}': [] for s in cond_names}
+        duration |= {f'{s}_run{str(r+1)}': [] for s in cond_names}
+        weights_gain[f'gain_run{str(r+1)}'] = []
+        weights_loss[f'loss_run{str(r+1)}'] = []
+
     for r, run in enumerate(runs):
         
         f_events = event_files[r]
-        
+
         with open(f_events, 'rt') as f:
             next(f)  # skip the header
-            
+
             for line in f:
                 info = line.strip().split()
-                
+
                 for cond in cond_names:
-                    val = cond + '_run' + str(r+1) # trial_run1 or accepting_run1
-                    val_gain = 'gain_run' + str(r+1) # gain_run1
-                    val_loss = 'loss_run' + str(r+1) # loss_run1
+                    val = f'{cond}_run{str(r+1)}'
+                    val_gain = f'gain_run{str(r+1)}'
+                    val_loss = f'loss_run{str(r+1)}'
                     if cond == 'trial':
                         onset[val].append(float(info[0])) # onsets for trial_run1 
                         duration[val].append(float(4))
@@ -137,16 +137,16 @@ def get_subject_infos_spm(event_files, runs):
                     elif cond == 'rejecting' and 'reject' in info[5]:
                         onset[val].append(float(info[0]) + float(info[4]))
                         duration[val].append(float(0))
-                    
+
 
     # Bunching is done per run, i.e. trial_run1, trial_run2, etc.
     # But names must not have '_run1' etc because we concatenate runs 
     subject_info = []
     for r in range(len(runs)):
 
-        cond = [s + '_run' + str(r+1) for s in cond_names]
-        gain = 'gain_run' + str(r+1)
-        loss = 'loss_run' + str(r+1)
+        cond = [f'{s}_run{str(r+1)}' for s in cond_names]
+        gain = f'gain_run{str(r+1)}'
+        loss = f'loss_run{str(r+1)}'
 
         subject_info.insert(r,
                            Bunch(conditions=cond_names,
@@ -179,17 +179,17 @@ def get_session_infos_fsl(event_file):
     from os.path import join as opj
     from nipype.interfaces.base import Bunch
     import numpy as np
-    
+
     cond_names = ['trial', 'gain', 'loss']
-    
+
     onset = {}
     duration = {}
     amplitude = {}
-    
+
     for c in cond_names:  # For each condition.
-        onset.update({c : []}) # creates dictionary items with empty lists
-        duration.update({c : []}) 
-        amplitude.update({c : []})
+        onset[c] = []
+        duration[c] = []
+        amplitude[c] = []
 
     with open(event_file, 'rt') as f:
         next(f)  # skip the header
@@ -212,17 +212,17 @@ def get_session_infos_fsl(event_file):
                     amplitude[c].append(float(1)) 
 
 
-    
-    subject_info = []
 
-    subject_info.append(Bunch(conditions=cond_names,
-                             onsets=[onset[k] for k in cond_names],
-                             durations=[duration[k] for k in cond_names],
-                             amplitudes=[amplitude[k] for k in cond_names],
-                             regressor_names=None,
-                             regressors=None))
-
-    return subject_info
+    return [
+        Bunch(
+            conditions=cond_names,
+            onsets=[onset[k] for k in cond_names],
+            durations=[duration[k] for k in cond_names],
+            amplitudes=[amplitude[k] for k in cond_names],
+            regressor_names=None,
+            regressors=None,
+        )
+    ]
 
 # THIS FUNCTION CREATES THE CONTRASTS THAT WILL BE ANALYZED IN THE FIRST LEVEL ANALYSIS
 # IT IS ADAPTED FOR A SPECIFIC PIPELINE AND SHOULD BE MODIFIED DEPENDING ON THE PIPELINE YOU ARE TRYING TO REPRODUCE
@@ -240,18 +240,15 @@ def get_contrasts(subject_id):
     '''
     # list of condition names     
     conditions = ['trial', 'trialxgain^1', 'trialxloss^1']
-    
+
     # create contrasts
     trial = ('trial', 'T', conditions, [1, 0, 0])
-    
-    effect_gain = ('effect_of_gain', 'T', conditions, [0, 1, 0])
-    
-    effect_loss = ('effect_of_loss', 'T', conditions, [0, 0, 1])
-    
-    # contrast list
-    contrasts = [effect_gain, effect_loss]
 
-    return contrasts
+    effect_gain = ('effect_of_gain', 'T', conditions, [0, 1, 0])
+
+    effect_loss = ('effect_of_loss', 'T', conditions, [0, 0, 1])
+
+    return [effect_gain, effect_loss]
 
 # FUNCTION TO CREATE THE WORKFLOW OF A L1 ANALYSIS (SUBJECT LEVEL)
 def get_l1_analysis(subject_list, TR, run_list, exp_dir, result_dir, working_dir, output_dir):
@@ -350,24 +347,25 @@ def get_subset_contrasts_spm(file_list, method, subject_list, participants_file)
     equalRange_files = []
 
     with open(participants_file, 'rt') as f: # Reading file containing participants IDs and groups
-            next(f)  # skip the header
-            
-            for line in f:
-                info = line.strip().split()
-                
-                if info[0][-3:] in subject_list and info[1] == "equalIndifference": # Checking for each participant if its ID was selected 
+        next(f)  # skip the header
+
+        for line in f:
+            info = line.strip().split()
+
+            if info[0][-3:] in subject_list:
+                if info[1] == "equalIndifference": # Checking for each participant if its ID was selected 
                 # and separate people depending on their group
-                    equalIndifference_id.append(info[0][-3:]) 
-                elif info[0][-3:] in subject_list and info[1] == "equalRange":
+                    equalIndifference_id.append(info[0][-3:])
+                elif info[1] == "equalRange":
                     equalRange_id.append(info[0][-3:])
-    
+
     for file in file_list: # Checking for each selected file if the corresponding participant was selected and add the file to the list corresponding to its group
         sub_id = file.split('/')
         if sub_id[-2][-3:] in equalIndifference_id:
             equalIndifference_files.append(file)
         elif sub_id[-2][-3:] in equalRange_id:
             equalRange_files.append(file)
-            
+
     return equalIndifference_id, equalRange_id, equalIndifference_files, equalRange_files
 
 # THIS FUNCTION IS ADAPTED FOR AN FSL PIPELINE. 
@@ -383,30 +381,31 @@ def get_subgroups_contrasts_fsl(copes, varcopes, subject_list, participants_file
     '''
     
     from os.path import join as opj
-    
+
     equalRange_id = []
     equalIndifference_id = []
-    
+
     with open(participants_file, 'rt') as f: # Reading file containing participants IDs and groups
-            next(f)  # skip the header
-            
-            for line in f:
-                info = line.strip().split()
+        next(f)  # skip the header
+
+        for line in f:
+            info = line.strip().split()
 
                 # Checking for each participant if its ID was selected 
                 # and separate people depending on their group
-                if info[0][-3:] in subject_list and info[1] == "equalIndifference":
+            if info[0][-3:] in subject_list:
+                if info[1] == "equalIndifference":
                     equalIndifference_id.append(info[0][-3:])
-                elif info[0][-3:] in subject_list and info[1] == "equalRange":
+                elif info[1] == "equalRange":
                     equalRange_id.append(info[0][-3:])
-                    
+
     copes_equalIndifference = []
     copes_equalRange = []
     copes_global = []
     varcopes_equalIndifference = []
     varcopes_equalRange = []
     varcopes_global = []
-    
+
     for file in copes: # Checking for each selected file if the corresponding participant was selected and add the file to the list corresponding to its group
         sub_id = file.split('/')
         if sub_id[-2][-3:] in equalIndifference_id:
@@ -415,7 +414,7 @@ def get_subgroups_contrasts_fsl(copes, varcopes, subject_list, participants_file
             copes_equalRange.append(file) 
         if sub_id[-2][-3:] in subject_list:
             copes_global.append(file)
-            
+
     for file in varcopes: # Same thing but for varcopes files
         sub_id = file.split('/')
         if sub_id[-2][-3:] in equalIndifference_id:
@@ -424,7 +423,7 @@ def get_subgroups_contrasts_fsl(copes, varcopes, subject_list, participants_file
             varcopes_equalRange.append(file) 
         if sub_id[-2][-3:] in subject_list:
             varcopes_global.append(file)
-            
+
     return copes_equalIndifference, copes_equalRange, varcopes_equalIndifference, varcopes_equalRange, equalIndifference_id, equalRange_id, copes_global, varcopes_global
 
 # THIS FUNCTION CREATES THE DICTIONNARY OF REGRESSORS USED IN FSL NIPYPE PIPELINES
@@ -442,33 +441,36 @@ def get_regs(equalRange_id, equalIndifference_id, method, subject_list):
         - regressors: dict, dictionnary of regressors used to distinguish groups in FSL group analysis
     """
     # For one sample t-test, creates a dictionnary with a list of the size of the number of participants
-    if method == "equalRange":
-        regressors = dict(group_mean = [1 for i in range(len(equalRange_id))])
-        
-    elif method == "equalIndifference":
-        regressors = dict(group_mean = [1 for i in range(len(equalIndifference_id))]) 
+    if method == "equalIndifference":
+        regressors = dict(group_mean=[1 for _ in range(len(equalIndifference_id))]) 
 
 
-    # For two sample t-test, creates 2 lists: one for equal range group, one for equal indifference group
-    # Each list contains n_sub values with 0 and 1 depending on the group of the participant
-    # For equalRange_reg list --> participants with a 1 are in the equal range group 
-    elif method == "groupComp":   
-        equalRange_reg = [1 for i in range(len(equalRange_id) + len(equalIndifference_id))]
-        equalIndifference_reg = [0 for i in range(len(equalRange_id) + len(equalIndifference_id))]
-        
+    elif method == "equalRange":
+        regressors = dict(group_mean=[1 for _ in range(len(equalRange_id))])
+
+    elif method == "groupComp":
+        equalRange_reg = [
+            1 for _ in range(len(equalRange_id) + len(equalIndifference_id))
+        ]
+
+        equalIndifference_reg = [
+            0 for _ in range(len(equalRange_id) + len(equalIndifference_id))
+        ]
+
+
         for i, sub_id in enumerate(subject_list): 
             if sub_id in equalIndifference_id:
                 index = i
                 equalIndifference_reg[index] = 1
                 equalRange_reg[index] = 0
-            
+
         regressors = dict(equalRange = equalRange_reg, 
                       equalIndifference = equalIndifference_reg)
-    
+
     return regressors
 
 # FUNCTION TO CREATE THE WORKFLOW OF A L2 ANALYSIS (GROUP LEVEL)
-def get_l2_analysis(subject_list, n_sub, contrast_list, method, exp_dir, result_dir, working_dir, output_dir):   
+def get_l2_analysis(subject_list, n_sub, contrast_list, method, exp_dir, result_dir, working_dir, output_dir):
     """
     Returns the 2nd level of analysis workflow.
 
@@ -500,14 +502,14 @@ def get_l2_analysis(subject_list, n_sub, contrast_list, method, exp_dir, result_
     participants_file = opj(exp_dir, 'participants.tsv')
 
     templates = {'contrast' : contrast_file, 'participants' : participants_file}
-    
+
     selectfiles_groupanalysis = Node(SelectFiles(templates, base_directory=result_dir, force_list= True),
                        name="selectfiles_groupanalysis")
-    
+
     # Datasink node : to save important files 
     datasink_groupanalysis = Node(DataSink(base_directory = result_dir, container = output_dir), 
                                   name = 'datasink_groupanalysis')
-    
+
     # IF THIS IS AN SPM PIPELINE:
     # Node to select subset of contrasts
     sub_contrasts = Node(Function(input_names = ['file_list', 'method', 'subject_list', 'participants_file'],
@@ -525,8 +527,8 @@ def get_l2_analysis(subject_list, n_sub, contrast_list, method, exp_dir, result_
                                                  'varcopes_global'],
                                   function = get_subgroups_contrasts), 
                          name = 'subgroups_contrasts')
-    
-    
+
+
     regs = Node(Function(input_names = ['equalRange_id', 'equalIndifference_id', 'method', 'subject_list'],
                                         output_names = ['regressors'],
                                         function = get_regs), name = 'regs')
@@ -556,8 +558,8 @@ def get_l2_analysis(subject_list, n_sub, contrast_list, method, exp_dir, result_
                         # Input and output names can be found on NiPype documentation
                         (node_variable, datasink_groupanalysis, [('node_output_name', 'preprocess.@sym_link')])
                         ]) # Complete with other links between nodes
-    
-    if method=='equalRange' or method=='equalIndifference':
+
+    if method in ['equalRange', 'equalIndifference']:
         contrasts = [('Group', 'T', ['mean'], [1]), ('Group', 'T', ['mean'], [-1])] 
 
     elif method == 'groupComp':
@@ -596,13 +598,13 @@ def reorganize_results(result_dir, output_dir, n_sub, team_ID):
 
     h = [h1, h2, h3, h4, h5, h6, h7, h8, h9]
 
-    repro_unthresh = [opj(filename, "_change_filename_.nii") for i, filename in enumerate(h)] # Change filename with the filename of the final results 
+    repro_unthresh = [opj(filename, "_change_filename_.nii") for filename in h]
 
-    repro_thresh = [opj(filename, "_change_filename_.nii") for i, filename in enumerate(h)]
-    
+    repro_thresh = [opj(filename, "_change_filename_.nii") for filename in h]
+
     if not os.path.isdir(opj(result_dir, "NARPS-reproduction")):
         os.mkdir(opj(result_dir, "NARPS-reproduction"))
-    
+
     for i, filename in enumerate(repro_unthresh):
         f_in = filename
         f_out = opj(result_dir, "NARPS-reproduction", f"team_{team_ID}_nsub_{n_sub}_hypo{i+1}_unthresholded.nii")

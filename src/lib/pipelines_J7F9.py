@@ -27,49 +27,49 @@ def get_subject_infos(event_files, runs):
     '''
     from nipype.interfaces.base import Bunch
     import numpy as np
-    
+
     cond_names = ['trial', 'missed']
     onset = {}
     duration = {}
     weights_gain = {}
     weights_loss = {}
-    
+
     for r in range(len(runs)):  # Loop over number of runs.
-        onset.update({s + '_run' + str(r+1) : [] for s in cond_names}) # creates dictionary items with empty lists
-        duration.update({s + '_run' + str(r+1) : [] for s in cond_names}) 
-        weights_gain.update({'gain_run' + str(r+1) : []})
-        weights_loss.update({'loss_run' + str(r+1) : []})
-    
+        onset |= {f'{s}_run{str(r+1)}': [] for s in cond_names}
+        duration |= {f'{s}_run{str(r+1)}': [] for s in cond_names}
+        weights_gain[f'gain_run{str(r+1)}'] = []
+        weights_loss[f'loss_run{str(r+1)}'] = []
+
     for r, run in enumerate(runs):
         
         f_events = event_files[r]
-        
+
         with open(f_events, 'rt') as f:
             next(f)  # skip the header
-            
+
             for line in f:
                 info = line.strip().split()
-                
+
                 for cond in cond_names:
-                    val = cond + '_run' + str(r+1) # trial_run1
-                    val_gain = 'gain_run' + str(r+1) # gain_run1
-                    val_loss = 'loss_run' + str(r+1) # loss_run1
-                    if cond =='trial':
+                    val = f'{cond}_run{str(r+1)}'
+                    val_gain = f'gain_run{str(r+1)}'
+                    val_loss = f'loss_run{str(r+1)}'
+                    if cond == 'missed':
+                        if float(info[4]) < 0.1 or str(info[5]) == 'NoResp':
+                            onset[val].append(float(info[0]))
+                            duration[val].append(float(0))
+
+
+                    elif cond == 'trial':
                         onset[val].append(float(info[0])) # onsets for trial_run1 
                         duration[val].append(float(0))
                         weights_gain[val_gain].append(float(info[2])) # weights gain for trial_run1
                         weights_loss[val_loss].append(float(info[3])) # weights loss for trial_run1
-                    elif cond=='missed':
-                        if float(info[4]) < 0.1 or str(info[5]) == 'NoResp':
-                            onset[val].append(float(info[0]))
-                            duration[val].append(float(0))
-                    
-                    
-    for gain_val in weights_gain.keys():
+    for gain_val in weights_gain:
         weights_gain[gain_val] = weights_gain[gain_val] - np.mean(weights_gain[gain_val])
         weights_gain[gain_val] = weights_gain[gain_val].tolist()
-        
-    for loss_val in weights_loss.keys():
+
+    for loss_val in weights_loss:
         weights_loss[loss_val] = weights_loss[loss_val] - np.mean(weights_loss[loss_val])
         weights_loss[loss_val] = weights_loss[loss_val].tolist()
 
@@ -78,12 +78,12 @@ def get_subject_infos(event_files, runs):
     subject_info = []
     for r in range(len(runs)):
         
-        if len(onset['missed_run' + str(r+1)]) ==0:
+        if len(onset[f'missed_run{str(r+1)}']) == 0:
             cond_names = ['trial']
 
-        cond = [c + '_run' + str(r+1) for c in cond_names]
-        gain = 'gain_run' + str(r+1)
-        loss = 'loss_run' + str(r+1)
+        cond = [f'{c}_run{str(r+1)}' for c in cond_names]
+        gain = f'gain_run{str(r+1)}'
+        loss = f'loss_run{str(r+1)}'
 
         subject_info.insert(r,
                            Bunch(conditions=cond_names,
@@ -108,18 +108,15 @@ def get_contrasts(subject_id):
     '''
     # list of condition names     
     conditions = ['trial', 'trialxgain^1', 'trialxloss^1']
-    
+
     # create contrasts
     trial = ('trial', 'T', conditions, [1, 0, 0])
-    
-    effect_gain = ('effect_of_gain', 'T', conditions, [0, 1, 0])
-    
-    effect_loss = ('effect_of_loss', 'T', conditions, [0, 0, 1])
-    
-    # contrast list
-    contrasts = [trial, effect_gain, effect_loss]
 
-    return contrasts
+    effect_gain = ('effect_of_gain', 'T', conditions, [0, 1, 0])
+
+    effect_loss = ('effect_of_loss', 'T', conditions, [0, 0, 1])
+
+    return [trial, effect_gain, effect_loss]
 
 
 def get_parameters_file(filepaths, subject_id, result_dir, working_dir):
@@ -136,14 +133,14 @@ def get_parameters_file(filepaths, subject_id, result_dir, working_dir):
     - parameters_file : paths to new files containing only desired parameters.
     '''
     import pandas as pd
-    import numpy as np 
+    import numpy as np
     from os.path import join as opj
     import os
-    
+
     if not isinstance(filepaths, list):
         filepaths = [filepaths]
     parameters_file = []
-    
+
     for i, file in enumerate(filepaths):
         df = pd.read_csv(file, sep = '\t', header=0)
         temp_list = np.array([df['X'], df['Y'], df['Z'],
@@ -153,12 +150,10 @@ def get_parameters_file(filepaths, subject_id, result_dir, working_dir):
         new_path =opj(result_dir, working_dir, 'parameters_file', f"parameters_file_sub-{subject_id}_run0{str(i+1)}.tsv")
         if not os.path.isdir(opj(result_dir, working_dir, 'parameters_file')):
             os.mkdir(opj(result_dir, working_dir, 'parameters_file'))
-        writer = open(new_path, "w")
-        writer.write(retained_parameters.to_csv(sep = '\t', index = False, header = False, na_rep = '0.0'))
-        writer.close()
-        
+        with open(new_path, "w") as writer:
+            writer.write(retained_parameters.to_csv(sep = '\t', index = False, header = False, na_rep = '0.0'))
         parameters_file.append(new_path)
-    
+
     return parameters_file
 
 def rm_gunzip_files(files, subject_id, result_dir, working_dir):
@@ -334,27 +329,28 @@ def get_subset_contrasts(file_list, method, subject_list, participants_file):
     equalRange_files = []
 
     with open(participants_file, 'rt') as f:
-            next(f)  # skip the header
-            
-            for line in f:
-                info = line.strip().split()
-                
-                if info[0][-3:] in subject_list and info[1] == "equalIndifference":
+        next(f)  # skip the header
+
+        for line in f:
+            info = line.strip().split()
+
+            if info[0][-3:] in subject_list:
+                if info[1] == "equalIndifference":
                     equalIndifference_id.append(info[0][-3:])
-                elif info[0][-3:] in subject_list and info[1] == "equalRange":
+                elif info[1] == "equalRange":
                     equalRange_id.append(info[0][-3:])
-    
+
     for file in file_list:
         sub_id = file.split('/')
         if sub_id[-1][-7:-4] in equalIndifference_id:
             equalIndifference_files.append(file)
         elif sub_id[-1][-7:-4] in equalRange_id:
             equalRange_files.append(file)
-            
+
     return equalIndifference_id, equalRange_id, equalIndifference_files, equalRange_files
 
 
-def get_l2_analysis(subject_list, n_sub, contrast_list, method, exp_dir, output_dir, working_dir, result_dir, data_dir):   
+def get_l2_analysis(subject_list, n_sub, contrast_list, method, exp_dir, output_dir, working_dir, result_dir, data_dir):
     """
     Returns the 2nd level of analysis workflow.
 
@@ -384,14 +380,14 @@ def get_l2_analysis(subject_list, n_sub, contrast_list, method, exp_dir, output_
     participants_file = opj(exp_dir, 'participants.tsv')
 
     templates = {'contrast' : contrast_file, 'participants' : participants_file}
-    
+
     selectfiles_groupanalysis = Node(SelectFiles(templates, base_directory=result_dir, force_list= True),
                        name="selectfiles_groupanalysis")
-    
+
     # Datasink node : to save important files 
     datasink_groupanalysis = Node(DataSink(base_directory = result_dir, container = output_dir), 
                                   name = 'datasink_groupanalysis')
-    
+
     # Node to select subset of contrasts
     sub_contrasts = Node(Function(input_names = ['file_list', 'method', 'subject_list', 'participants_file'],
                                  output_names = ['equalIndifference_id', 'equalRange_id', 'equalIndifference_files', 'equalRange_files'],
@@ -426,8 +422,8 @@ def get_l2_analysis(subject_list, n_sub, contrast_list, method, exp_dir, output_
             ('spmT_images', f"l2_analysis_{method}_nsub_{n_sub}.@T"),
             ('con_images', f"l2_analysis_{method}_nsub_{n_sub}.@con")]),
         (threshold, datasink_groupanalysis, [('thresholded_map', f"l2_analysis_{method}_nsub_{n_sub}.@thresh")])])
-    
-    if method=='equalRange' or method=='equalIndifference':
+
+    if method in ['equalRange', 'equalIndifference']:
         contrasts = [('Group', 'T', ['mean'], [1]), ('Group', 'T', ['mean'], [-1])] 
         ## Specify design matrix 
         one_sample_t_test_design = Node(OneSampleTTestDesign(), name = "one_sample_t_test_design")
@@ -489,10 +485,10 @@ def reorganize_results(result_dir, output_dir, n_sub, team_ID):
     repro_thresh = [opj(filename, "_threshold1", 
          "spmT_0002_thr.nii") if i in [4, 5] else opj(filename, 
           "_threshold0", "spmT_0001_thr.nii")  for i, filename in enumerate(h)]
-    
+
     if not os.path.isdir(opj(result_dir, "NARPS-reproduction")):
         os.mkdir(opj(result_dir, "NARPS-reproduction"))
-    
+
     for i, filename in enumerate(repro_unthresh):
         f_in = filename
         f_out = opj(result_dir, "NARPS-reproduction", f"team_{team_ID}_nsub_{n_sub}_hypo{i+1}_unthresholded.nii")

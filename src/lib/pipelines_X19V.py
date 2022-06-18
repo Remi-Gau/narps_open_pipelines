@@ -27,17 +27,17 @@ def get_session_infos(event_file):
     from os.path import join as opj
     from nipype.interfaces.base import Bunch
     import numpy as np
-    
+
     cond_names = ['trial', 'gain', 'loss']
-    
+
     onset = {}
     duration = {}
     amplitude = {}
-    
+
     for c in cond_names:  # For each condition.
-        onset.update({c : []}) # creates dictionary items with empty lists
-        duration.update({c : []}) 
-        amplitude.update({c : []})
+        onset[c] = []
+        duration[c] = []
+        amplitude[c] = []
 
     with open(event_file, 'rt') as f:
         next(f)  # skip the header
@@ -54,20 +54,20 @@ def get_session_infos(event_file):
                     amplitude[c].append(float(info[3]))
                 elif c == 'trial':
                     amplitude[c].append(float(1))
-                        
+
     amplitude['gain'] = amplitude['gain'] - np.mean(amplitude['gain'])
     amplitude['loss'] = amplitude['loss'] - np.mean(amplitude['loss'])
-    
-    subject_info = []
 
-    subject_info.append(Bunch(conditions=cond_names,
-                             onsets=[onset[k] for k in cond_names],
-                             durations=[duration[k] for k in cond_names],
-                             amplitudes=[amplitude[k] for k in cond_names],
-                             regressor_names=None,
-                             regressors=None))
-
-    return subject_info
+    return [
+        Bunch(
+            conditions=cond_names,
+            onsets=[onset[k] for k in cond_names],
+            durations=[duration[k] for k in cond_names],
+            amplitudes=[amplitude[k] for k in cond_names],
+            regressor_names=None,
+            regressors=None,
+        )
+    ]
 
 def get_parameters_file(file, subject_id, run_id, result_dir, working_dir):
     '''
@@ -84,12 +84,10 @@ def get_parameters_file(file, subject_id, run_id, result_dir, working_dir):
     - parameters_file : paths to new files containing only desired parameters.
     '''
     import pandas as pd
-    import numpy as np 
+    import numpy as np
     from os.path import join as opj
     import os
-    
-    parameters_file = []
-    
+
     df = pd.read_csv(file, sep = '\t', header=0)
     temp_list = np.array([df['X'], df['Y'], df['Z'],
                           df['RotX'], df['RotY'], df['RotZ']]) # Parameters we want to use for the model
@@ -97,13 +95,9 @@ def get_parameters_file(file, subject_id, run_id, result_dir, working_dir):
     new_path =opj(result_dir, working_dir, 'parameters_file', f"parameters_file_sub-{subject_id}_run{run_id}.tsv")
     if not os.path.isdir(opj(result_dir, working_dir, 'parameters_file')):
         os.mkdir(opj(result_dir, working_dir, 'parameters_file'))
-    writer = open(new_path, "w")
-    writer.write(retained_parameters.to_csv(sep = '\t', index = False, header = False, na_rep = '0.0'))
-    writer.close()
-        
-    parameters_file.append(new_path)
-    
-    return parameters_file
+    with open(new_path, "w") as writer:
+        writer.write(retained_parameters.to_csv(sep = '\t', index = False, header = False, na_rep = '0.0'))
+    return [new_path]
 
 # Linear contrast effects: 'Gain' vs. baseline, 'Loss' vs. baseline.
 def get_contrasts(subject_id):
@@ -120,21 +114,18 @@ def get_contrasts(subject_id):
     '''
     # list of condition names     
     conditions = ['trial', 'gain', 'loss']
-    
+
     # create contrasts
     gain = ('gain', 'T', conditions, [0, 1, 0])
-    
+
     loss = ('loss', 'T', conditions, [0, 0, 1])
-    
+
     gain_sup = ('gain_sup_loss', 'T', conditions, [0, 1, -1])
-    
+
     loss_sup = ('loss_sup_gain', 'T', conditions, [0, -1, 1])
 
-    
-    # contrast list
-    contrasts = [gain, loss, gain_sup, loss_sup]
 
-    return contrasts
+    return [gain, loss, gain_sup, loss_sup]
 
 
 def rm_smoothed_files(files, subject_id, run_id, result_dir, working_dir):
@@ -350,54 +341,54 @@ def get_subgroups_contrasts(copes, varcopes, subject_ids, participants_file):
     '''
     
     from os.path import join as opj
-    
+
     equalRange_id = []
     equalIndifference_id = []
-    
-    subject_list = ['sub-' + str(i) for i in subject_ids]
-    
+
+    subject_list = [f'sub-{str(i)}' for i in subject_ids]
+
     with open(participants_file, 'rt') as f:
             next(f)  # skip the header
-            
+
             for line in f:
                 info = line.strip().split()
-                
+
                 if info[0] in subject_list and info[1] == "equalIndifference":
                     equalIndifference_id.append(info[0][-3:])
                 elif info[0] in subject_list and info[1] == "equalRange":
                     equalRange_id.append(info[0][-3:])
-                    
+
     copes_equalIndifference = []
     copes_equalRange = []
     varcopes_equalIndifference = []
     varcopes_equalRange = []
-    
+
     for file in copes:
         sub_id = file.split('/')
         if sub_id[-2][-3:] in equalIndifference_id:
             copes_equalIndifference.append(file)
         elif sub_id[-2][-3:] in equalRange_id:
             copes_equalRange.append(file)     
-            
+
     for file in varcopes:
         sub_id = file.split('/')
         if sub_id[-2][-3:] in equalIndifference_id:
             varcopes_equalIndifference.append(file)
         elif sub_id[-2][-3:] in equalRange_id:
             varcopes_equalRange.append(file) 
-            
+
     print(len(equalRange_id))
     print(len(equalIndifference_id))
     print(len(copes_equalIndifference))
     print(len(copes_equalRange))
-    
+
     copes_global = copes_equalIndifference + copes_equalRange
     varcopes_global = varcopes_equalIndifference + varcopes_equalRange
-            
+
     return copes_equalIndifference, copes_equalRange, copes_global, varcopes_equalIndifference, varcopes_equalRange, varcopes_global, equalIndifference_id, equalRange_id 
 
 def get_regs(equalRange_id, equalIndifference_id, method, subject_list):
-	"""
+    """
 	Create dictionnary of regressors for group analysis. 
 
 	Parameters: 
@@ -409,26 +400,32 @@ def get_regs(equalRange_id, equalIndifference_id, method, subject_list):
 	Returns:
 		- regressors: dict, dictionnary of regressors used to distinguish groups in FSL group analysis
 	"""
-	if method == "equalRange":
-		regressors = dict(group_mean = [1 for i in range(len(equalRange_id))])
-        
-	elif method == "equalIndifference":
-		regressors = dict(group_mean = [1 for i in range(len(equalIndifference_id))])
-        
-	elif method == "groupComp":   
-		equalRange_reg = [1 for i in range(len(equalRange_id) + len(equalIndifference_id))]
-		equalIndifference_reg = [0 for i in range(len(equalRange_id) + len(equalIndifference_id))]
-        
-		for i, sub_id in enumerate(subject_list): 
-			if sub_id in equalIndifference_id:
-				index = i
-				equalIndifference_reg[index] = 1
-				equalRange_reg[index] = 0
-            
-		regressors = dict(equalRange = equalRange_reg, 
-                      equalIndifference = equalIndifference_reg)
-    
-	return regressors
+    if method == "equalIndifference":
+        regressors = dict(group_mean=[1 for _ in range(len(equalIndifference_id))])
+
+    elif method == "equalRange":
+        regressors = dict(group_mean=[1 for _ in range(len(equalRange_id))])
+
+    elif method == "groupComp":
+        equalRange_reg = [
+            1 for _ in range(len(equalRange_id) + len(equalIndifference_id))
+        ]
+
+        equalIndifference_reg = [
+            0 for _ in range(len(equalRange_id) + len(equalIndifference_id))
+        ]
+
+
+        for i, sub_id in enumerate(subject_list): 
+        	if sub_id in equalIndifference_id:
+        		index = i
+        		equalIndifference_reg[index] = 1
+        		equalRange_reg[index] = 0
+
+        regressors = dict(equalRange = equalRange_reg, 
+        equalIndifference = equalIndifference_reg)
+
+    return regressors
 
 def get_group_workflow(subject_list, n_sub, contrast_list, method, exp_dir, output_dir, 
                        working_dir, result_dir, data_dir):
@@ -585,10 +582,10 @@ def reorganize_results(result_dir, output_dir, n_sub, team_ID):
     repro_unthresh = [opj(filename, "zstat1.nii.gz") if i in [4, 5] else opj(filename, "zstat1.nii.gz") for i, filename in enumerate(h)]
 
     repro_thresh = [opj(filename, '_cluster0', "zstat1_threshold.nii.gz") if i in [4, 5] else opj(filename, '_cluster0', "zstat1_threshold.nii.gz")  for i, filename in enumerate(h)]
-    
+
     if not os.path.isdir(opj(result_dir, "NARPS-reproduction")):
         os.mkdir(opj(result_dir, "NARPS-reproduction"))
-    
+
     for i, filename in enumerate(repro_unthresh):
         f_in = filename
         f_out = opj(result_dir, "NARPS-reproduction", f"team_{team_ID}_nsub_{n_sub}_hypo{i+1}_unthresholded.nii.gz")

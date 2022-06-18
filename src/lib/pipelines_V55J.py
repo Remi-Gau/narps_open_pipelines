@@ -95,7 +95,7 @@ def get_preprocessing(exp_dir, result_dir, working_dir, output_dir, subject_list
 
     func_file = opj('sub-{subject_id}', 'func', 
                     'sub-{subject_id}_task-MGT_run-{run_id}_bold.nii.gz')
-    
+
     motion_corrected_file = opj(result_dir, working_dir, 'preprocessing', '_run_id_{run_id}_subject_id_{subject_id}', 'motion_correction', 'usub-{subject_id}_task-MGT_run-{run_id}_bold.nii')
     motion_par_file = opj(result_dir, working_dir, 'preprocessing', '_run_id_{run_id}_subject_id_{subject_id}', 'motion_correction', 'rp_sub-{subject_id}_task-MGT_run-{run_id}_bold.txt')
     mean_img_file = opj(result_dir, working_dir, 'preprocessing', '_run_id_{run_id}_subject_id_{subject_id}', 'motion_correction', 'meanusub-{subject_id}_task-MGT_run-{run_id}_bold.nii')
@@ -119,7 +119,7 @@ def get_preprocessing(exp_dir, result_dir, working_dir, output_dir, subject_list
     gunzip_magnitude = Node(Gunzip(), name = 'gunzip_magnitude')
 
     gunzip_phasediff = Node(Gunzip(), name = 'gunzip_phasediff')
-    
+
     extract_epi = Node(ExtractROI(t_min = 10, t_size=1, output_type = 'NIFTI'), name = 'extract_ROI')
 
     # Fieldmaps nodes
@@ -164,9 +164,9 @@ def get_preprocessing(exp_dir, result_dir, working_dir, output_dir, subject_list
     tissue5 = [('/opt/spm12-r7771/spm12_mcr/spm12/tpm/TPM.nii', 5), 4, (True,False), (True, False)]
     tissue6 = [('/opt/spm12-r7771/spm12_mcr/spm12/tpm/TPM.nii', 6), 2, (True,False), (True, False)]
     tissue_list = [tissue1, tissue2, tissue3, tissue4, tissue5, tissue6]
-    
+
     seg = Node(NewSegment(write_deformation_fields = [True, True], tissues = tissue_list), name = 'seg')
-    
+
     ## Normalization
     # We used the "Normalise: Write" routine in SPM12. We set the motion-corrected EPI images 
     # for each run as images to resample and the spatial normalization deformation field file 
@@ -229,7 +229,7 @@ def get_preprocessing(exp_dir, result_dir, working_dir, output_dir, subject_list
                            (rm_files, datasink_preproc, [('files', 'preprocess.@smooth')]),
                            (seg, datasink_preproc, [('native_class_images', 'preprocess.@seg_maps_native'),
                                                     ('normalized_class_images', 'preprocess.@seg_maps_norm')])])
-    
+
     return preprocessing    
 
 def get_subject_infos(event_files, runs):
@@ -253,7 +253,7 @@ def get_subject_infos(event_files, runs):
     - subject_info : list of Bunch for 1st level analysis.
     '''
     from nipype.interfaces.base import Bunch
-    
+
     cond_names = ['trial', 'accepting', 'rejecting']
     onset = {}
     duration = {}
@@ -261,27 +261,27 @@ def get_subject_infos(event_files, runs):
     weights_loss = {}
     onset_button = {}
     duration_button = {}
-    
+
     for r in range(len(runs)):  # Loop over number of runs.
-        onset.update({s + '_run' + str(r+1) : [] for s in cond_names}) # creates dictionary items with empty lists
-        duration.update({s + '_run' + str(r+1) : [] for s in cond_names}) 
-        weights_gain.update({'gain_run' + str(r+1) : []})
-        weights_loss.update({'loss_run' + str(r+1) : []})
-    
+        onset |= {f'{s}_run{str(r+1)}': [] for s in cond_names}
+        duration |= {f'{s}_run{str(r+1)}': [] for s in cond_names}
+        weights_gain[f'gain_run{str(r+1)}'] = []
+        weights_loss[f'loss_run{str(r+1)}'] = []
+
     for r, run in enumerate(runs):
         
         f_events = event_files[r]
-        
+
         with open(f_events, 'rt') as f:
             next(f)  # skip the header
-            
+
             for line in f:
                 info = line.strip().split()
-                
+
                 for cond in cond_names:
-                    val = cond + '_run' + str(r+1) # trial_run1 or accepting_run1
-                    val_gain = 'gain_run' + str(r+1) # gain_run1
-                    val_loss = 'loss_run' + str(r+1) # loss_run1
+                    val = f'{cond}_run{str(r+1)}'
+                    val_gain = f'gain_run{str(r+1)}'
+                    val_loss = f'loss_run{str(r+1)}'
                     if cond == 'trial':
                         onset[val].append(float(info[0])) # onsets for trial_run1 
                         duration[val].append(float(4))
@@ -293,16 +293,16 @@ def get_subject_infos(event_files, runs):
                     elif cond == 'rejecting' and 'reject' in info[5]:
                         onset[val].append(float(info[0]) + float(info[4]))
                         duration[val].append(float(0))
-                    
+
 
     # Bunching is done per run, i.e. trial_run1, trial_run2, etc.
     # But names must not have '_run1' etc because we concatenate runs 
     subject_info = []
     for r in range(len(runs)):
 
-        cond = [s + '_run' + str(r+1) for s in cond_names]
-        gain = 'gain_run' + str(r+1)
-        loss = 'loss_run' + str(r+1)
+        cond = [f'{s}_run{str(r+1)}' for s in cond_names]
+        gain = f'gain_run{str(r+1)}'
+        loss = f'loss_run{str(r+1)}'
 
         subject_info.insert(r,
                            Bunch(conditions=cond_names,
@@ -334,18 +334,15 @@ def get_contrasts(subject_id):
     '''
     # list of condition names     
     conditions = ['trial', 'trialxgain^1', 'trialxloss^1']
-    
+
     # create contrasts
     trial = ('trial', 'T', conditions, [1, 0, 0])
-    
-    effect_gain = ('effect_of_gain', 'T', conditions, [0, 1, 0])
-    
-    effect_loss = ('effect_of_loss', 'T', conditions, [0, 0, 1])
-    
-    # contrast list
-    contrasts = [effect_gain, effect_loss]
 
-    return contrasts
+    effect_gain = ('effect_of_gain', 'T', conditions, [0, 1, 0])
+
+    effect_loss = ('effect_of_loss', 'T', conditions, [0, 0, 1])
+
+    return [effect_gain, effect_loss]
 
 
 def compute_mask(wc1_file, wc2_file, wc3_file, result_dir, output_dir, subject_id):
@@ -515,27 +512,28 @@ def get_subset_contrasts(file_list, method, subject_list, participants_file):
     equalRange_files = []
 
     with open(participants_file, 'rt') as f:
-            next(f)  # skip the header
-            
-            for line in f:
-                info = line.strip().split()
-                
-                if info[0][-3:] in subject_list and info[1] == "equalIndifference":
+        next(f)  # skip the header
+
+        for line in f:
+            info = line.strip().split()
+
+            if info[0][-3:] in subject_list:
+                if info[1] == "equalIndifference":
                     equalIndifference_id.append(info[0][-3:])
-                elif info[0][-3:] in subject_list and info[1] == "equalRange":
+                elif info[1] == "equalRange":
                     equalRange_id.append(info[0][-3:])
-    
+
     for file in file_list:
         sub_id = file.split('/')
         if sub_id[-2][-3:] in equalIndifference_id:
             equalIndifference_files.append(file)
         elif sub_id[-2][-3:] in equalRange_id:
             equalRange_files.append(file)
-            
+
     return equalIndifference_id, equalRange_id, equalIndifference_files, equalRange_files
 
 
-def get_l2_analysis(subject_list, n_sub, contrast_list, method, exp_dir, result_dir, working_dir, output_dir):   
+def get_l2_analysis(subject_list, n_sub, contrast_list, method, exp_dir, result_dir, working_dir, output_dir):
     """
     Returns the 2nd level of analysis workflow.
 
@@ -565,14 +563,14 @@ def get_l2_analysis(subject_list, n_sub, contrast_list, method, exp_dir, result_
     participants_file = opj(exp_dir, 'participants.tsv')
 
     templates = {'contrast' : contrast_file, 'participants' : participants_file}
-    
+
     selectfiles_groupanalysis = Node(SelectFiles(templates, base_directory=result_dir, force_list= True),
                        name="selectfiles_groupanalysis")
-    
+
     # Datasink node : to save important files 
     datasink_groupanalysis = Node(DataSink(base_directory = result_dir, container = output_dir), 
                                   name = 'datasink_groupanalysis')
-    
+
     # Node to select subset of contrasts
     sub_contrasts = Node(Function(input_names = ['file_list', 'method', 'subject_list', 'participants_file'],
                                  output_names = ['equalIndifference_id', 'equalRange_id', 'equalIndifference_files', 'equalRange_files'],
@@ -606,8 +604,8 @@ def get_l2_analysis(subject_list, n_sub, contrast_list, method, exp_dir, result_
             ('spmT_images', f"l2_analysis_{method}_nsub_{n_sub}.@T"),
             ('con_images', f"l2_analysis_{method}_nsub_{n_sub}.@con")]),
         (threshold, datasink_groupanalysis, [('thresholded_map', f"l2_analysis_{method}_nsub_{n_sub}.@thresh")])])
-    
-    if method=='equalRange' or method=='equalIndifference':
+
+    if method in ['equalRange', 'equalIndifference']:
         contrasts = [('Group', 'T', ['mean'], [1]), ('Group', 'T', ['mean'], [-1])] 
         ## Specify design matrix 
         one_sample_t_test_design = Node(OneSampleTTestDesign(), name = "one_sample_t_test_design")
@@ -669,10 +667,10 @@ def reorganize_results(result_dir, output_dir, n_sub, team_ID):
     repro_thresh = [opj(filename, "_threshold1", 
          "spmT_0002_thr.nii") if i in [4, 5] else opj(filename, 
           "_threshold0", "spmT_0001_thr.nii")  for i, filename in enumerate(h)]
-    
+
     if not os.path.isdir(opj(result_dir, "NARPS-reproduction")):
         os.mkdir(opj(result_dir, "NARPS-reproduction"))
-    
+
     for i, filename in enumerate(repro_unthresh):
         f_in = filename
         f_out = opj(result_dir, "NARPS-reproduction", f"team_{team_ID}_nsub_{n_sub}_hypo{i+1}_unthresholded.nii")
