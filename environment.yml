@@ -11,5 +11,6 @@ dependencies:
   - graphviz 
   - nipype 
   - scikit-image
+  - pybids
   - pip:
     - matplotlib
