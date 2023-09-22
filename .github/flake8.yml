@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
     flake8:
-        name: run flake8
+
         runs-on: ubuntu-latest
 
         steps:
